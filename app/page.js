@@ -73,26 +73,24 @@ export default function HomePage() {
     localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
-  useEffect(() => {
-    async function loadUser() {
-      if (!supabase) {
-        setErrorMessage("Supabase is not configured.");
-        setAuthLoading(false);
-        return;
-      }
+useEffect(() => {
+  async function loadUser() {
+    if (!supabase) {
+      setErrorMessage("Supabase is not configured.");
+      setAuthLoading(false);
+      return;
+    }
 
-      const {
-        data: { user },
+    const {
+      data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) {
-        router.push("/login");
-        setAuthLoading(false);
-        return;
-      }
-
-      setUser(user);
+      setUser(user ?? null);
       setAuthLoading(false);
+
+      if (!user) {
+        router.replace("/login");
+      }
     }
 
     loadUser();
@@ -102,11 +100,13 @@ export default function HomePage() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const nextUser = session?.user ?? null;
 
-      if (!nextUser) {
-        router.push("/login");
-      }
-
       setUser(nextUser);
+      setAuthLoading(false);
+
+      if (!nextUser) {
+        setTodosByDay(emptyTodos());
+        router.replace("/login");
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -274,9 +274,23 @@ export default function HomePage() {
 
   async function handleSignOut() {
     if (!supabase) return;
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+
+    setSaving(true);
+    setErrorMessage("");
+
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      setErrorMessage(error.message || "Failed to sign out.");
+      setSaving(false);
+      return;
+    }
+
+    setUser(null);
+    setTodosByDay(emptyTodos());
+    setSaving(false);
+
+    router.replace("/login");
   }
 
   if (authLoading) {
@@ -284,6 +298,16 @@ export default function HomePage() {
       <main className="app-shell">
         <div className="app">
           <div className="panel notice">Checking session...</div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="app-shell">
+        <div className="app">
+          <div className="panel notice">Redirecting...</div>
         </div>
       </main>
     );
