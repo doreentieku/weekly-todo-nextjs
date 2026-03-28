@@ -49,7 +49,6 @@ export default function HomePage() {
 
   const [page, setPage] = useState("add");
   const [selectedDay, setSelectedDay] = useState("Monday");
-  const [darkMode, setDarkMode] = useState(false);
   const [drafts, setDrafts] = useState(() =>
     DAYS.reduce((acc, day) => {
       acc[day] = "";
@@ -63,15 +62,22 @@ export default function HomePage() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
+  const [mounted, setMounted] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
     const savedTheme = localStorage.getItem("theme");
-    setDarkMode(savedTheme === "dark");
+    const isDark = savedTheme === "dark";
+    setDarkMode(isDark);
+    document.body.classList.toggle("dark", isDark);
   }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     document.body.classList.toggle("dark", darkMode);
     localStorage.setItem("theme", darkMode ? "dark" : "light");
-  }, [darkMode]);
+  }, [darkMode, mounted]);
 
 useEffect(() => {
   async function loadUser() {
@@ -346,8 +352,8 @@ useEffect(() => {
               onClick={() => setDarkMode((prev) => !prev)}
               aria-label="Toggle theme"
             >
-              {darkMode ? "☀️" : "🌙"}
-            </button>
+              {mounted ? (darkMode ? "☀️" : "🌙") : "🌙"}
+          </button>
           </div>
         </nav>
 

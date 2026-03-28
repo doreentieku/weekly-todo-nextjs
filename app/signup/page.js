@@ -5,21 +5,28 @@ import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 
 export default function SignupPage() {
-  const [darkMode, setDarkMode] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  const [mounted, setMounted] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
     const savedTheme = localStorage.getItem("theme");
-    setDarkMode(savedTheme === "dark");
+    const isDark = savedTheme === "dark";
+    setDarkMode(isDark);
+    document.body.classList.toggle("dark", isDark);
   }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     document.body.classList.toggle("dark", darkMode);
     localStorage.setItem("theme", darkMode ? "dark" : "light");
-  }, [darkMode]);
+  }, [darkMode, mounted]);
+
 
   async function handleSignup(event) {
     event.preventDefault();
@@ -59,14 +66,14 @@ export default function SignupPage() {
             <h1 className="brand-title">TO-DO</h1>
           </div>
 
-          <button
-            className="theme-btn"
-            onClick={() => setDarkMode((prev) => !prev)}
-            aria-label="Toggle theme"
-            type="button"
-          >
-            {darkMode ? "☀️" : "🌙"}
-          </button>
+        <button
+          className="theme-btn"
+          onClick={() => setDarkMode((prev) => !prev)}
+          aria-label="Toggle theme"
+          type="button"
+        >
+          {mounted ? (darkMode ? "☀️" : "🌙") : "🌙"}
+      </button>
         </div>
 
         <section className="panel auth-card">
