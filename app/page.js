@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
+import TopNav from "./components/TopNav";
 
 const DAYS = [
   "Monday",
@@ -44,40 +46,19 @@ function groupTodos(rows) {
   return grouped;
 }
 
+function greetingForNow() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function HomePage() {
   const router = useRouter();
 
-  const [page, setPage] = useState("add");
-  const [selectedDay, setSelectedDay] = useState("Monday");
-  const [drafts, setDrafts] = useState(() =>
-    DAYS.reduce((acc, day) => {
-      acc[day] = "";
-      return acc;
-    }, {})
-  );
-  const [todosByDay, setTodosByDay] = useState(emptyTodos);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-
-  const [mounted, setMounted] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    const savedTheme = localStorage.getItem("theme");
-    const isDark = savedTheme === "dark";
-    setDarkMode(isDark);
-    document.body.classList.toggle("dark", isDark);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    document.body.classList.toggle("dark", darkMode);
-    localStorage.setItem("theme", darkMode ? "dark" : "light");
-  }, [darkMode, mounted]);
 
 useEffect(() => {
   async function loadUser() {
@@ -118,186 +99,14 @@ useEffect(() => {
     return () => subscription.unsubscribe();
   }, [router]);
 
-  async function refreshTodos(currentUserId = user?.id) {
-    if (!supabase || !currentUserId) return;
-
-    const { data, error } = await supabase
-      .from("todos")
-      .select("id, user_id, day, text, completed, created_at")
-      .eq("user_id", currentUserId)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      setErrorMessage(error.message || "Failed to refresh todos.");
-      return;
-    }
-
-    setTodosByDay(groupTodos(data));
-  }
-
-  useEffect(() => {
-    async function loadTodos() {
-      if (!supabase || !user?.id) return;
-
-      setLoading(true);
-      setErrorMessage("");
-
-      const { data, error } = await supabase
-        .from("todos")
-        .select("id, user_id, day, text, completed, created_at")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true });
-
-      if (error) {
-        setErrorMessage(error.message || "Failed to load todos.");
-        setLoading(false);
-        return;
-      }
-
-      setTodosByDay(groupTodos(data));
-      setLoading(false);
-    }
-
-    if (user?.id) {
-      loadTodos();
-    }
+  const nameHint = useMemo(() => {
+    const email = user?.email || user?.user_metadata?.email;
+    if (!email || typeof email !== "string") return "";
+    const left = email.split("@")[0] || "";
+    const cleaned = left.replace(/[._-]+/g, " ").trim();
+    if (!cleaned) return "";
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   }, [user]);
-
-  const totalTodos = useMemo(() => {
-    return Object.values(todosByDay).flat().length;
-  }, [todosByDay]);
-
-  const totalCompleted = useMemo(() => {
-    return Object.values(todosByDay).flat().filter((todo) => todo.completed).length;
-  }, [todosByDay]);
-
-  function dayStats(day) {
-    const items = todosByDay[day] || [];
-    const done = items.filter((item) => item.completed).length;
-    return { total: items.length, done };
-  }
-
-  async function addTodo(day) {
-    const text = drafts[day].trim();
-    if (!text || !supabase || !user) return;
-
-    setSaving(true);
-    setErrorMessage("");
-
-    const { error } = await supabase.from("todos").insert({
-      user_id: user.id,
-      day,
-      text,
-      completed: false,
-    });
-
-    if (error) {
-      setErrorMessage(error.message || "Failed to add todo.");
-      setSaving(false);
-      return;
-    }
-
-    setDrafts((prev) => ({
-      ...prev,
-      [day]: "",
-    }));
-
-    await refreshTodos(user.id);
-    setSaving(false);
-  }
-
-  async function toggleTodo(day, id, completed) {
-    if (!supabase || !user) return;
-
-    setSaving(true);
-    setErrorMessage("");
-
-    const { error } = await supabase
-      .from("todos")
-      .update({ completed: !completed })
-      .eq("id", id)
-      .eq("user_id", user.id);
-
-    if (error) {
-      setErrorMessage(error.message || "Failed to update todo.");
-      setSaving(false);
-      return;
-    }
-
-    await refreshTodos(user.id);
-    setSaving(false);
-  }
-
-  async function deleteTodo(day, id) {
-    if (!supabase || !user) return;
-
-    setSaving(true);
-    setErrorMessage("");
-
-    const { error } = await supabase
-      .from("todos")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", user.id);
-
-    if (error) {
-      setErrorMessage(error.message || "Failed to delete todo.");
-      setSaving(false);
-      return;
-    }
-
-    await refreshTodos(user.id);
-    setSaving(false);
-  }
-
-  async function clearCompleted(day) {
-    if (!supabase || !user) return;
-
-    const completedIds = (todosByDay[day] || [])
-      .filter((todo) => todo.completed)
-      .map((todo) => todo.id);
-
-    if (!completedIds.length) return;
-
-    setSaving(true);
-    setErrorMessage("");
-
-    const { error } = await supabase
-      .from("todos")
-      .delete()
-      .in("id", completedIds)
-      .eq("user_id", user.id);
-
-    if (error) {
-      setErrorMessage(error.message || "Failed to clear completed todos.");
-      setSaving(false);
-      return;
-    }
-
-    await refreshTodos(user.id);
-    setSaving(false);
-  }
-
-  async function handleSignOut() {
-    if (!supabase) return;
-
-    setSaving(true);
-    setErrorMessage("");
-
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      setErrorMessage(error.message || "Failed to sign out.");
-      setSaving(false);
-      return;
-    }
-
-    setUser(null);
-    setTodosByDay(emptyTodos());
-    setSaving(false);
-
-    router.replace("/login");
-  }
 
   if (authLoading) {
     return (
@@ -322,40 +131,7 @@ useEffect(() => {
   return (
     <main className="app-shell">
       <div className="app">
-        <nav className="panel navbar">
-          <button className="nav-btn" onClick={handleSignOut}>
-            Sign Out
-          </button>
-
-          <div>
-            <div className="brand-small">Weekly planner</div>
-            <h1 className="brand-title">TO-DO</h1>
-          </div>
-
-          <div className="nav-actions">
-            <button
-              className={`nav-btn ${page === "add" ? "active" : ""}`}
-              onClick={() => setPage("add")}
-            >
-              Add Todos
-            </button>
-
-            <button
-              className={`nav-btn ${page === "check" ? "active" : ""}`}
-              onClick={() => setPage("check")}
-            >
-              Check Todos
-            </button>
-
-            <button
-              className="theme-btn"
-              onClick={() => setDarkMode((prev) => !prev)}
-              aria-label="Toggle theme"
-            >
-              {mounted ? (darkMode ? "☀️" : "🌙") : "🌙"}
-          </button>
-          </div>
-        </nav>
+        <TopNav />
 
         {errorMessage && (
           <div className="panel" style={{ padding: "16px 18px", marginBottom: "18px" }}>
@@ -363,191 +139,53 @@ useEffect(() => {
           </div>
         )}
 
-        <section className="stats">
-          <div className="panel stat-card">
-            <div className="stat-icon">📅</div>
-            <div>
-              <div className="stat-label">Selected day</div>
-              <div className="stat-value">{selectedDay}</div>
-            </div>
-          </div>
+        <section className="panel home-hero">
+          <div className="page-tag">Home</div>
+          <h2 className="home-title">
+            {greetingForNow()}
+            {nameHint ? `, ${nameHint}` : ""}.
+          </h2>
+          <p className="home-subtitle">
+            This isn’t about doing everything. It’s about doing <strong>one</strong> meaningful thing
+            next—then letting that momentum carry you.
+          </p>
 
-          <div className="panel stat-card">
-            <div className="stat-icon">📝</div>
-            <div>
-              <div className="stat-label">Total tasks</div>
-              <div className="stat-value">{totalTodos}</div>
-            </div>
-          </div>
-
-          <div className="panel stat-card">
-            <div className="stat-icon">✔</div>
-            <div>
-              <div className="stat-label">Completed</div>
-              <div className="stat-value">{totalCompleted}</div>
-            </div>
+          <div className="home-actions">
+            <Link className="action-btn primary" href="/add">
+              Add a task
+            </Link>
+            <Link className="action-btn" href="/check">
+              Check progress
+            </Link>
           </div>
         </section>
 
-        <section className="main-grid">
-          <aside className="panel sidebar">
-            {DAYS.map((day) => {
-              const stats = dayStats(day);
-              const active = selectedDay === day;
+        <section className="home-grid">
+          <div className="panel home-card">
+            <div className="home-card-title">Make it small</div>
+            <div className="home-card-body">Tiny tasks feel possible. Possible becomes consistent.</div>
+            <Link className="home-card-link" href="/add">
+              Add something gentle →
+            </Link>
+          </div>
 
-              return (
-                <button
-                  key={day}
-                  className={`day-btn ${active ? "active" : ""}`}
-                  onClick={() => setSelectedDay(day)}
-                >
-                  <div>
-                    <div className="day-name">{day.toUpperCase()}</div>
-                    <div className="day-meta">
-                      {stats.done} of {stats.total} completed
-                    </div>
-                  </div>
-                  <div className="day-count">{stats.total}</div>
-                </button>
-              );
-            })}
-          </aside>
+          <div className="panel home-card">
+            <div className="home-card-title">Notice the wins</div>
+            <div className="home-card-body">Checking off is a reward loop. Use it on purpose.</div>
+            <Link className="home-card-link" href="/check">
+              Mark something done →
+            </Link>
+          </div>
 
-          <section className="panel content">
-            {page === "add" ? (
-              <>
-                <div className="page-tag">Page one</div>
-                <h2 className="page-title">ADD TODOS</h2>
-                <p className="page-subtitle">
-                  Pick a day on the left, type your task, and save it in Supabase.
-                </p>
-
-                <div className="input-row">
-                  <input
-                    className="todo-input"
-                    type="text"
-                    placeholder={`Add a to-do for ${selectedDay}...`}
-                    value={drafts[selectedDay]}
-                    onChange={(event) =>
-                      setDrafts((prev) => ({
-                        ...prev,
-                        [selectedDay]: event.target.value,
-                      }))
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !saving) addTodo(selectedDay);
-                    }}
-                    disabled={saving || loading}
-                  />
-
-                  <button
-                    className="action-btn primary"
-                    onClick={() => addTodo(selectedDay)}
-                    disabled={saving || loading}
-                  >
-                    {saving ? "Saving..." : "Add Task"}
-                  </button>
-                </div>
-
-                <div className="todo-list">
-                  {loading ? (
-                    <div className="empty">
-                      <strong>Loading todos...</strong>
-                      Waiting for Supabase data.
-                    </div>
-                  ) : todosByDay[selectedDay]?.length ? (
-                    todosByDay[selectedDay].map((todo) => (
-                      <div className="todo-item" key={todo.id}>
-                        <div className="todo-item-left">
-                          <div>
-                            <div className="todo-text">{todo.text}</div>
-                            <div className="todo-day">{selectedDay}</div>
-                          </div>
-                        </div>
-
-                        <button
-                          className="delete-btn"
-                          onClick={() => deleteTodo(selectedDay, todo.id)}
-                          aria-label="Delete task"
-                          disabled={saving}
-                        >
-                          🗑
-                        </button>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="empty">
-                      <strong>No tasks yet for {selectedDay}</strong>
-                      Add your first task for this day.
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="page-header-row">
-                  <div>
-                    <div className="page-tag">Page two</div>
-                    <h2 className="page-title">CHECK TODOS</h2>
-                    <p className="page-subtitle">
-                      Click a day, then check off what you finished.
-                    </p>
-                  </div>
-
-                  <button
-                    className="action-btn"
-                    onClick={() => clearCompleted(selectedDay)}
-                    disabled={saving || loading}
-                  >
-                    Clear Completed
-                  </button>
-                </div>
-
-                <div className="todo-list">
-                  {loading ? (
-                    <div className="empty">
-                      <strong>Loading todos...</strong>
-                      Waiting for Supabase data.
-                    </div>
-                  ) : todosByDay[selectedDay]?.length ? (
-                    todosByDay[selectedDay].map((todo) => (
-                      <div
-                        className="todo-item clickable"
-                        key={todo.id}
-                        onClick={() => toggleTodo(selectedDay, todo.id, todo.completed)}
-                      >
-                        <div className="todo-item-left">
-                          <button
-                            className={`todo-check ${todo.completed ? "completed" : ""}`}
-                            aria-label="Toggle task completion"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              toggleTodo(selectedDay, todo.id, todo.completed);
-                            }}
-                            disabled={saving}
-                          >
-                            {todo.completed ? "✔" : ""}
-                          </button>
-
-                          <div>
-                            <div className={`todo-text ${todo.completed ? "completed" : ""}`}>
-                              {todo.text}
-                            </div>
-                            <div className="todo-day">{selectedDay}</div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="empty">
-                      <strong>No tasks available for {selectedDay}</strong>
-                      Go to Add Todos and create some first.
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </section>
+          <div className="panel home-card">
+            <div className="home-card-title">Stay in your rhythm</div>
+            <div className="home-card-body">
+              A calm space reduces friction—so you come back tomorrow.
+            </div>
+            <Link className="home-card-link" href="/add">
+              Start your next step →
+            </Link>
+          </div>
         </section>
       </div>
     </main>
